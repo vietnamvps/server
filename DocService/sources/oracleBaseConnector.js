@@ -36,7 +36,6 @@ const oracledb = require('oracledb');
 const config = require('config');
 const connectorUtilities = require('./connectorUtilities');
 const utils = require('./../../Common/sources/utils');
-const {result} = require("underscore");
 
 const configSql = config.get('services.CoAuthoring.sql');
 const cfgTableResult = configSql.get('tableResult');
@@ -52,6 +51,7 @@ const connectionConfiguration = {
 };
 const additionalOptions = configSql.get('oracleExtraOptions');
 const configuration = Object.assign({}, connectionConfiguration, additionalOptions);
+const forceClosingCountdownMs = 2000;
 let pool = null;
 
 oracledb.fetchAsString = [ oracledb.NCLOB, oracledb.CLOB ];
@@ -144,6 +144,14 @@ async function executeBunch(ctx, sqlCommand, values = [], noLog = false) {
   }
 }
 
+function closePool() {
+  pool?.close(forceClosingCountdownMs);
+}
+
+function healthCheck(ctx) {
+  return executeQuery(ctx, 'SELECT 1 FROM DUAL');
+}
+
 function addSqlParameter(parameter, accumulatedArray) {
   const currentIndex = accumulatedArray.push(parameter) - 1;
   return `:${currentIndex}`;
@@ -203,10 +211,10 @@ function makeUpdateSql(dateNow, task, values, opt_updateUserIndex) {
     userIndex = ', user_index = user_index + 1';
   }
 
-  const updateQuery = `last_open_date = ${lastOpenDate}${callback}${baseUrl}${userIndex}`
+  const updateQuery = `last_open_date = ${lastOpenDate}${callback}${baseUrl}${userIndex}`;
   const tenant = addSqlParameter(task.tenant, values);
   const id = addSqlParameter(task.key, values);
-  const condition = `tenant = ${tenant} AND id = ${id}`
+  const condition = `tenant = ${tenant} AND id = ${id}`;
 
   const returning = addSqlParameter({ type: oracledb.NUMBER, dir: oracledb.BIND_OUT }, values);
 
@@ -319,7 +327,7 @@ async function insertChangesAsync(ctx, tableChanges, startIndex, objChanges, doc
     placeholder.push(`:${i}`);
   }
 
-  const sqlInsert = `INSERT /*+ APPEND_VALUES*/INTO ${tableChanges} VALUES(${placeholder.join(',')})`
+  const sqlInsert = `INSERT /*+ APPEND_VALUES*/INTO ${tableChanges} VALUES(${placeholder.join(',')})`;
   const result = await executeBunch(ctx, sqlInsert, values);
 
   if (packetCapacityReached) {
@@ -332,6 +340,8 @@ async function insertChangesAsync(ctx, tableChanges, startIndex, objChanges, doc
 
 module.exports = {
   sqlQuery,
+  closePool,
+  healthCheck,
   addSqlParameter,
   concatParams,
   getTableColumns,
