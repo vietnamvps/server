@@ -1,11 +1,11 @@
 const { describe, test, expect, afterAll } = require('@jest/globals');
-const config = require('../../Common/node_modules/config');
+const config = require('../../../Common/node_modules/config');
 
-const baseConnector = require('../../DocService/sources/baseConnector');
-const operationContext = require('../../Common/sources/operationContext');
-const taskResult = require('../../DocService/sources/taskresult');
-const commonDefines = require('../../Common/sources/commondefines');
-const constants = require('../../Common/sources/constants');
+const baseConnector = require('../../../DocService/sources/baseConnector');
+const operationContext = require('../../../Common/sources/operationContext');
+const taskResult = require('../../../DocService/sources/taskresult');
+const commonDefines = require('../../../Common/sources/commondefines');
+const constants = require('../../../Common/sources/constants');
 const configSql = config.get('services.CoAuthoring.sql');
 
 const ctx = new operationContext.Context();
@@ -300,6 +300,7 @@ describe('Base database connector', function () {
         const result = await baseConnector.getChangesPromise(ctx, docId, index, changesCount);
         expect(result.length).toEqual(changesCount);
 
+        dayBefore.setSeconds(dayBefore.getSeconds() + 1);
         const resultByDate = await baseConnector.getChangesPromise(ctx, docId, index, changesCount + additionalChangesCount, dayBefore);
         expect(resultByDate.length).toEqual(additionalChangesCount);
       });
