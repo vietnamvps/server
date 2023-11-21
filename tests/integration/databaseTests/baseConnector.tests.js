@@ -1,7 +1,7 @@
 const { describe, test, expect, afterAll } = require('@jest/globals');
 const config = require('../../../Common/node_modules/config');
 
-const baseConnector = require('../../../DocService/sources/baseConnector');
+const baseConnector = require('../../../DocService/sources/databaseConnectors/baseConnector');
 const operationContext = require('../../../Common/sources/operationContext');
 const taskResult = require('../../../DocService/sources/taskresult');
 const commonDefines = require('../../../Common/sources/commondefines');
@@ -103,8 +103,8 @@ function createChanges(changesLength, date) {
 
 async function getRowsCountById(table, id) {
   const result = await executeSql(`SELECT COUNT(id) AS count FROM ${table} WHERE id = '${id}';`);
-  // Return type of COUNT() in postgres is bigint which treats as string by connector.
-  return +result[0].count;
+  // Return type of COUNT() in postgres is bigint which treats as string by connector. Dameng DB returns js bigint type.
+  return Number(result[0].count);
 }
 
 async function noRowsExistenceCheck(table, id) {

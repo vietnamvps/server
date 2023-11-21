@@ -32,168 +32,192 @@
 
 'use strict';
 
-const co = require('co');
-const connectorUtilities = require('./connectorUtilities');
-const db = require("dmdb");
+const connectorUtilities = require('./databaseConnectors/connectorUtilities');
+const db = require('dmdb');
 const config = require('config');
 
-const cfgDbHost = config.get('services.CoAuthoring.sql.dbHost');
-const cfgDbPort = config.get('services.CoAuthoring.sql.dbPort');
-const cfgDbUser = config.get('services.CoAuthoring.sql.dbUser');
-const cfgDbPass = config.get('services.CoAuthoring.sql.dbPass');
-const cfgConnectionlimit = config.get('services.CoAuthoring.sql.connectionlimit');
-const cfgTableResult = config.get('services.CoAuthoring.sql.tableResult');
-var cfgDamengExtraOptions = config.get('services.CoAuthoring.sql.damengExtraOptions');
+const configSql = config.get('services.CoAuthoring.sql');
+const cfgDbHost = configSql.get('dbHost');
+const cfgDbPort = configSql.get('dbPort');
+const cfgDbUser = configSql.get('dbUser');
+const cfgDbPass = configSql.get('dbPass');
+const cfgConnectionLimit = configSql.get('connectionlimit');
+const cfgTableResult = configSql.get('tableResult');
+const cfgDamengExtraOptions = configSql.get('damengExtraOptions');
+const forceClosingCountdownMs = 2000;
+
+// dmdb driver separates PoolAttributes and ConnectionAttributes.
+// For some reason if you use pool you must define connection attributes in connectString, they are not included in config object, and pool.getConnection() can't configure it.
+const poolHostInfo = `dm://${cfgDbUser}:${cfgDbPass}@${cfgDbHost}:${cfgDbPort}`;
+const connectionOptions = Object.entries(cfgDamengExtraOptions).map(option => option.join('=')).join('&');
 
 let pool = null;
-//todo add '?loginEncrypt=false' connectString query param to config(for docker on win)
-let connectString = `dm://${cfgDbUser}:${cfgDbPass}@${cfgDbHost}:${cfgDbPort}`;
-let connectionConfig = {
-  connectString: connectString,
-  poolMax: cfgConnectionlimit,
-  poolMin: 0,
-  localTimezone: 0
+const poolConfig = {
+  // String format dm://username:password@host:port[?prop1=val1[&prop2=val2]]
+  connectString: `${poolHostInfo}${connectionOptions.length > 0 ? '?' : ''}${connectionOptions}`,
+  poolMax: cfgConnectionLimit,
+  poolMin: 0
 };
-config.util.extendDeep(connectionConfig, cfgDamengExtraOptions);
 
 function readLob(lob) {
   return new Promise(function(resolve, reject) {
-    var blobData = Buffer.alloc(0);
-    var totalLength = 0;
+    let blobData = Buffer.alloc(0);
+    let totalLength = 0;
+
     lob.on('data', function(chunk) {
       totalLength += chunk.length;
       blobData = Buffer.concat([blobData, chunk], totalLength);
     });
+
     lob.on('error', function(err) {
       reject(err);
     });
+
     lob.on('end', function() {
       resolve(blobData);
     });
   });
 }
-function formatResult(result) {
-  return co(function *() {
-    let res = [];
-    if (result?.rows && result ?.metaData) {
-      for (let i = 0; i < result.rows.length; ++i) {
-        let row = result.rows[i];
-        let out = {};
-        for (let j = 0; j < result.metaData.length; ++j) {
-          let columnName = result.metaData[j].name.toLowerCase();
-          if (row[j]?.on) {
-            let buf = yield readLob(row[j]);
-            out[columnName] = buf.toString('utf8');
-          } else {
-            out[columnName] = row[j];
-          }
-        }
-        res.push(out);
-      }
-    }
-    return res;
-  });
-}
-exports.sqlQuery = function(ctx, sqlCommand, callbackFunction, opt_noModifyRes, opt_noLog, opt_values) {
-  return co(function *() {
-    var result = null;
-    var output = null;
-    var error = null;
-    try {
-      if (!pool) {
-        pool = yield db.createPool(connectionConfig);
-      }
-      let conn = yield pool.getConnection();
-      result = yield conn.execute(sqlCommand, opt_values, {resultSet: false});
-      if (conn) {
-        yield conn.close();
-      }
-      output = result;
-      if (!opt_noModifyRes) {
-        if (result?.rows) {
-          output = yield formatResult(result);
-        } else if (result?.rowsAffected) {
-          output = {affectedRows: result.rowsAffected};
-        } else {
-          output = {rows: [], affectedRows: 0};
-        }
-      }
-    } catch (err) {
-      error = err;
-      if (!opt_noLog) {
-        ctx.logger.warn('sqlQuery error sqlCommand: %s: %s', sqlCommand.slice(0, 50), err.stack);
-      }
-    } finally {
-      if (callbackFunction) {
-        callbackFunction(error, output);
-      }
-    }
-  });
-};
-let addSqlParam = function (val, values) {
-  values.push({val: val});
-  return ':' + values.length;
-};
-exports.addSqlParameter = addSqlParam;
-let concatParams = function (val1, val2) {
-  return `CONCAT(COALESCE(${val1}, ''), COALESCE(${val2}, ''))`;
-};
-exports.concatParams = concatParams;
 
-exports.upsert = function(ctx, task) {
-  return new Promise(function(resolve, reject) {
-    task.completeDefaults();
-    let dateNow = new Date();
-    let values = [];
-    let cbInsert = task.callback;
-    if (task.callback) {
-      let userCallback = new connectorUtilities.UserCallback();
-      userCallback.fromValues(task.userIndex, task.callback);
-      cbInsert = userCallback.toSQLInsert();
-    }
-    let p0 = addSqlParam(task.tenant, values);
-    let p1 = addSqlParam(task.key, values);
-    let p2 = addSqlParam(task.status, values);
-    let p3 = addSqlParam(task.statusInfo, values);
-    let p4 = addSqlParam(dateNow, values);
-    let p5 = addSqlParam(task.userIndex, values);
-    let p6 = addSqlParam(task.changeId, values);
-    let p7 = addSqlParam(cbInsert, values);
-    let p8 = addSqlParam(task.baseurl, values);
-    let p9 = addSqlParam(dateNow, values);
-    var sqlCommand = `MERGE INTO ${cfgTableResult} USING dual ON (tenant = ${p0} AND id = ${p1}) `;
-    sqlCommand += `WHEN NOT MATCHED THEN INSERT (tenant, id, status, status_info, last_open_date, user_index, change_id, callback, baseurl) `;
-    sqlCommand += `VALUES (${p0}, ${p1}, ${p2}, ${p3}, ${p4}, ${p5}, ${p6}, ${p7}, ${p8}) `;
-    sqlCommand += `WHEN MATCHED THEN UPDATE SET last_open_date = ${p9}`;
-    if (task.callback) {
-      let p10 = addSqlParam(JSON.stringify(task.callback), values);
-      sqlCommand += `, callback = CONCAT(callback , '${connectorUtilities.UserCallback.prototype.delimiter}{"userIndex":' , (user_index + 1) , ',"callback":', ${p10}, '}')`;
-    }
-    if (task.baseurl) {
-      let p11 = addSqlParam(task.baseurl, values);
-      sqlCommand += `, baseurl = ${p11}`;
-    }
-    sqlCommand += ', user_index = user_index + 1';
-    sqlCommand += ';';
-    sqlCommand += `SELECT user_index FROM ${cfgTableResult} WHERE tenant = ${p0} AND id = ${p1};`;
-    exports.sqlQuery(ctx, sqlCommand, function(error, result) {
-      if (error) {
-        reject(error);
-      } else {
-        let out = {};
-        if (result?.length > 0) {
-          var first = result[0];
-          out.isInsert = task.userIndex === first.user_index;
-          out.insertId = first.user_index;
+async function formatResult(result) {
+  const res = [];
+  if (result?.rows && result?.metaData) {
+    for (let i = 0; i < result.rows.length; ++i) {
+      const row = result.rows[i];
+      const out = {};
+      for (let j = 0; j < result.metaData.length; ++j) {
+        let columnName = result.metaData[j].name;
+        if (row[j]?.on) {
+          const buf = await readLob(row[j]);
+          out[columnName] = buf.toString('utf8');
+        } else {
+          out[columnName] = row[j];
         }
-        resolve(out);
       }
-    }, undefined, undefined, values);
-  });
-};
-exports.getTableColumns = function(ctx, tableName) {
-  //todo
-  return new Promise(function(resolve, reject) {
-    resolve([]);
-  });
+
+      res.push(out);
+    }
+  }
+
+  return res;
+}
+
+function sqlQuery(ctx, sqlCommand, callbackFunction, opt_noModifyRes = false, opt_noLog = false, opt_values = []) {
+  return executeQuery(ctx, sqlCommand, opt_values, opt_noModifyRes, opt_noLog).then(
+    result => callbackFunction?.(null, result),
+    error => callbackFunction?.(error)
+  );
+}
+
+async function executeQuery(ctx, sqlCommand, values = [], noModifyRes = false, noLog = false) {
+  let connection = null;
+  try {
+    if (!pool) {
+      pool = await db.createPool(poolConfig);
+    }
+
+    connection = await pool.getConnection();
+    const result = await connection.execute(sqlCommand, values, { resultSet: false });
+
+    let output = result;
+    if (!noModifyRes) {
+      if (result?.rows) {
+        output = await formatResult(result);
+      } else if (result?.rowsAffected) {
+        output = { affectedRows: result.rowsAffected };
+      } else {
+        output = { rows: [], affectedRows: 0 };
+      }
+    }
+
+    return output;
+  } catch (error) {
+    if (!noLog) {
+      ctx.logger.warn('sqlQuery error sqlCommand: %s: %s', sqlCommand.slice(0, 50), error.stack);
+    }
+
+    throw error;
+  } finally {
+    connection?.close();
+  }
+}
+
+function closePool() {
+  return pool.close(forceClosingCountdownMs);
+}
+
+function addSqlParameter(val, values) {
+  values.push({ val: val });
+  return `:${values.length}`;
+}
+
+function concatParams(val1, val2) {
+  return `CONCAT(COALESCE(${val1}, ''), COALESCE(${val2}, ''))`;
+}
+
+async function getTableColumns(ctx, tableName) {
+  const result = await executeQuery(ctx, `SELECT column_name FROM DBA_TAB_COLUMNS WHERE table_name = '${tableName.toUpperCase()}';`);
+  return result.map(row => { return { column_name: row.column_name.toLowerCase() }});
+}
+
+async function upsert(ctx, task) {
+  task.completeDefaults();
+  let dateNow = new Date();
+  let values = [];
+
+  let cbInsert = task.callback;
+  if (task.callback) {
+    let userCallback = new connectorUtilities.UserCallback();
+    userCallback.fromValues(task.userIndex, task.callback);
+    cbInsert = userCallback.toSQLInsert();
+  }
+
+  const p0 = addSqlParameter(task.tenant, values);
+  const p1 = addSqlParameter(task.key, values);
+  const p2 = addSqlParameter(task.status, values);
+  const p3 = addSqlParameter(task.statusInfo, values);
+  const p4 = addSqlParameter(dateNow, values);
+  const p5 = addSqlParameter(task.userIndex, values);
+  const p6 = addSqlParameter(task.changeId, values);
+  const p7 = addSqlParameter(cbInsert, values);
+  const p8 = addSqlParameter(task.baseurl, values);
+  const p9 = addSqlParameter(dateNow, values);
+
+  let sqlCommand = `MERGE INTO ${cfgTableResult} USING dual ON (tenant = ${p0} AND id = ${p1}) `;
+  sqlCommand += `WHEN NOT MATCHED THEN INSERT (tenant, id, status, status_info, last_open_date, user_index, change_id, callback, baseurl) `;
+  sqlCommand += `VALUES (${p0}, ${p1}, ${p2}, ${p3}, ${p4}, ${p5}, ${p6}, ${p7}, ${p8}) `;
+  sqlCommand += `WHEN MATCHED THEN UPDATE SET last_open_date = ${p9}`;
+
+  if (task.callback) {
+    let p10 = addSqlParameter(JSON.stringify(task.callback), values);
+    sqlCommand += `, callback = CONCAT(callback , '${connectorUtilities.UserCallback.prototype.delimiter}{"userIndex":' , (user_index + 1) , ',"callback":', ${p10}, '}')`;
+  }
+
+  if (task.baseurl) {
+    let p11 = addSqlParameter(task.baseurl, values);
+    sqlCommand += `, baseurl = ${p11}`;
+  }
+
+  sqlCommand += ', user_index = user_index + 1';
+  sqlCommand += ';';
+  sqlCommand += `SELECT user_index FROM ${cfgTableResult} WHERE tenant = ${p0} AND id = ${p1};`;
+
+  const out = {};
+  const result = await executeQuery(ctx, sqlCommand, values);
+  if (result?.length > 0) {
+    const first = result[0];
+    out.isInsert = task.userIndex === first.user_index;
+    out.insertId = first.user_index;
+  }
+
+  return out;
+}
+
+module.exports = {
+  sqlQuery,
+  closePool,
+  addSqlParameter,
+  concatParams,
+  getTableColumns,
+  upsert
 };
