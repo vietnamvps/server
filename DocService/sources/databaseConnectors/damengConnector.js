@@ -32,7 +32,7 @@
 
 'use strict';
 
-const connectorUtilities = require('./databaseConnectors/connectorUtilities');
+const connectorUtilities = require('./connectorUtilities');
 const db = require('dmdb');
 const config = require('config');
 
