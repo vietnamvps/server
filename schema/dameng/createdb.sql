@@ -7,7 +7,7 @@
 -- ----------------------------
 -- Table structure for doc_changes
 -- ----------------------------
-CREATE TABLE onlyoffice.doc_changes
+CREATE TABLE doc_changes
 (
 tenant varchar(255) NOT NULL,
 id varchar(255) NOT NULL,
@@ -23,7 +23,7 @@ PRIMARY KEY (tenant, id, change_id)
 -- ----------------------------
 -- Table structure for task_result
 -- ----------------------------
-CREATE TABLE onlyoffice.task_result
+CREATE TABLE task_result
 (
 tenant varchar(255) NOT NULL,
 id varchar(255) NOT NULL,

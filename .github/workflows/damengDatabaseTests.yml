@@ -41,9 +41,8 @@ jobs:
 
       - name: Creating schema
         run: |
-          docker cp ./.github/workflows/scripts/damengStartup.sh dameng:/
-          docker exec dameng chmod 667 /damengStartup.sh
-          docker exec dameng /damengStartup.sh
+          docker cp ./schema/dameng/createdb.sql dameng:/
+          docker exec dameng bash -c "cat /createdb.sql | /opt/dmdbms/bin/disql SYSDBA/SYSDBA001:5236"
 
       - name: Run Jest
         run: npm exec -c 'cd ./DocService && jest databaseTests --inject-globals=false --config=../tests/jest.config.js'
