@@ -19,7 +19,7 @@ jobs:
       - name: Caching dependencies
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
+          node-version: '14'
           cache: 'npm'
           cache-dependency-path: |
             ./npm-shrinkwrap.json
@@ -42,4 +42,4 @@ jobs:
           docker exec postgres psql -d onlyoffice -U onlyoffice -a -f /createdb.sql
 
       - name: Run Jest
-        run: npm exec -c 'cd ./DocService && jest databaseTests --inject-globals=false --config=../tests/jest.config.js'
+        run: npm run "integration database tests"

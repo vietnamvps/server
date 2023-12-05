@@ -11,7 +11,7 @@ CREATE TABLE doc_changes(
     user_id_original NVARCHAR(255) NOT NULL,
     user_name NVARCHAR(255) NOT NULL,
     change_data NVARCHAR(MAX) NOT NULL,
-    change_date DATETIME2(6) NOT NULL,
+    change_date DATETIME NOT NULL,
     UNIQUE (tenant, id, change_id)
 );
 
@@ -20,8 +20,8 @@ CREATE TABLE task_result (
     id NVARCHAR(255) NOT NULL,
     status SMALLINT NOT NULL,
     status_info INT NOT NULL,
-    created_at DATETIME2(6) DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    last_open_date DATETIME2(6) NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    last_open_date DATETIME NOT NULL,
     user_index DECIMAL DEFAULT 1 NOT NULL,
     change_id DECIMAL DEFAULT 0 NOT NULL,
     callback NVARCHAR(MAX) NOT NULL,
