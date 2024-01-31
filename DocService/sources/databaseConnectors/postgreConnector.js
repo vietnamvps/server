@@ -36,6 +36,7 @@ var pg = require('pg');
 var co = require('co');
 var types = require('pg').types;
 const connectorUtilities = require('./connectorUtilities');
+const operationContext = require('../../../Common/sources/operationContext');
 const config = require('config');
 var configSql = config.get('services.CoAuthoring.sql');
 const cfgTableResult = config.get('services.CoAuthoring.sql.tableResult');
@@ -50,12 +51,16 @@ let connectionConfig = {
   database: configSql.get('dbName'),
   max: configSql.get('connectionlimit'),
   min: 0,
-  ssl: false,
-  idleTimeoutMillis: 30000
+  ssl: false
 };
 //clone pgPoolExtraOptions to resolve 'TypeError: Cannot redefine property: key' in pg-pool
+//timeouts from https://github.com/brianc/node-postgres/issues/3018#issuecomment-1619729794
 config.util.extendDeep(connectionConfig, pgPoolExtraOptions);
 var pool = new pg.Pool(connectionConfig);
+//listen "error" event otherwise - unhandled exception(https://github.com/brianc/node-postgres/issues/2764#issuecomment-1163475426)
+pool.on('error', (err, client) => {
+  operationContext.global.logger.error(`postgresql pool error %s`, err.stack)
+})
 //todo datetime timezone
 pg.defaults.parseInputDatesAsUTC = true;
 types.setTypeParser(1114, function(stringValue) {
