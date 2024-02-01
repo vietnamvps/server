@@ -32,7 +32,7 @@
 
 'use strict';
 
-const sql = require("mssql");
+const sql = require('mssql');
 const config = require('config');
 const connectorUtilities = require('./connectorUtilities');
 const utils = require('../../../Common/sources/utils');
@@ -50,12 +50,21 @@ const connectionConfiguration = {
   database: configSql.get('dbName'),
   pool: {
     max: configSql.get('connectionlimit'),
-    min: 0,
-    idleTimeoutMillis: 30000
+    min: 0
   }
 };
 const additionalOptions = configSql.get('msSqlExtraOptions');
-const configuration = Object.assign({}, connectionConfiguration, additionalOptions);
+
+const mergedObjects = {};
+for (const option in additionalOptions) {
+  if (connectionConfiguration.hasOwnProperty(option) && typeof connectionConfiguration[option] === 'object') {
+    mergedObjects[option] = Object.assign({}, connectionConfiguration[option], additionalOptions[option]);
+  } else {
+    mergedObjects[option] = additionalOptions[option];
+  }
+}
+
+const configuration = Object.assign({}, connectionConfiguration, mergedObjects);
 
 const placeholderPrefix = 'ph_';
 
@@ -72,15 +81,15 @@ function errorHandle(message, error, ctx) {
 function dataType(value) {
   let type = sql.TYPES.NChar(1);
   switch (typeof value) {
-    case "number": {
+    case 'number': {
       type = sql.TYPES.Decimal(18, 0);
       break;
     }
-    case "string": {
+    case 'string': {
       type = sql.TYPES.NVarChar(sql.MAX);
       break;
     }
-    case "object": {
+    case 'object': {
       if (value instanceof Date) {
         type = sql.TYPES.DateTime();
       }
