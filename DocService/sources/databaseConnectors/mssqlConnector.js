@@ -54,17 +54,7 @@ const connectionConfiguration = {
   }
 };
 const additionalOptions = configSql.get('msSqlExtraOptions');
-
-const mergedObjects = {};
-for (const option in additionalOptions) {
-  if (connectionConfiguration.hasOwnProperty(option) && typeof connectionConfiguration[option] === 'object') {
-    mergedObjects[option] = Object.assign({}, connectionConfiguration[option], additionalOptions[option]);
-  } else {
-    mergedObjects[option] = additionalOptions[option];
-  }
-}
-
-const configuration = Object.assign({}, connectionConfiguration, mergedObjects);
+const configuration = utils.deepMergeObjects({}, connectionConfiguration, additionalOptions);
 
 const placeholderPrefix = 'ph_';
 
