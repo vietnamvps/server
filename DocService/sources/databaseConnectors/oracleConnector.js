@@ -117,7 +117,16 @@ async function executeQuery(ctx, sqlCommand, values = [], noModifyRes = false, n
 
     throw error;
   } finally {
-      connection?.close();
+    if (connection) {
+      try {
+        // Put the connection back in the pool
+        await connection.close();
+      } catch (error) {
+        if (!noLog) {
+          ctx.logger.error(`connection.close() error while executing query: ${sqlCommand}\n${error.stack}`);
+        }
+      }
+    }
   }
 }
 
