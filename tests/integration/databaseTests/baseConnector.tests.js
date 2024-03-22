@@ -218,30 +218,8 @@ describe('Base database connector', function () {
 
   describe('DB tables existence', function () {
     const tables = {
-      [cfgTableResult]: [
-        { column_name: 'tenant' },
-        { column_name: 'id' },
-        { column_name: 'status' },
-        { column_name: 'status_info' },
-        { column_name: 'created_at' },
-        { column_name: 'last_open_date' },
-        { column_name: 'user_index' },
-        { column_name: 'change_id' },
-        { column_name: 'callback' },
-        { column_name: 'baseurl' },
-        { column_name: 'password' },
-        { column_name: 'additional' }
-      ],
-      [cfgTableChanges]: [
-        { column_name: 'tenant' },
-        { column_name: 'id' },
-        { column_name: 'change_id' },
-        { column_name: 'user_id' },
-        { column_name: 'user_id_original' },
-        { column_name: 'user_name' },
-        { column_name: 'change_data' },
-        { column_name: 'change_date' }
-      ]
+      [cfgTableResult]: constants.TABLE_RESULT_SCHEMA.map(column => { return { column_name: column } }),
+      [cfgTableChanges]: constants.TABLE_CHANGES_SCHEMA.map(column => { return { column_name: column } })
     };
 
     for (const table in tables) {
