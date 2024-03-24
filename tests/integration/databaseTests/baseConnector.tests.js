@@ -230,6 +230,11 @@ describe('Base database connector', function () {
         }
       });
     }
+    const table = "unused_table";
+    test(`${table} table absence`, async function () {
+      const result = await baseConnector.getTableColumns(ctx, table);
+      expect(result).toEqual([]);
+    });
   });
 
   describe('Changes manipulations', function () {
