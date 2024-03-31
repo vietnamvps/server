@@ -1,6 +1,8 @@
 name: MSSQL database tests
 on:
   push:
+    branches:
+      - '**'
     paths:
       - 'DocService/sources/databaseConnectors/baseConnector.js'
       - 'DocService/sources/databaseConnectors/mssqlConnector.js'
