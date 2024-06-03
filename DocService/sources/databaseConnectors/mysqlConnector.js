@@ -54,7 +54,7 @@ const connectionConfiguration = {
 const additionalOptions = configSql.get('mysqlExtraOptions');
 const configuration = Object.assign({}, connectionConfiguration, additionalOptions);
 
-let pool = null;
+let pool = mysql.createPool(configuration);
 
 function sqlQuery(ctx, sqlCommand, callbackFunction, opt_noModifyRes = false, opt_noLog = false, opt_values = []) {
   return executeQuery(ctx, sqlCommand, opt_values, opt_noModifyRes, opt_noLog).then(
@@ -66,10 +66,6 @@ function sqlQuery(ctx, sqlCommand, callbackFunction, opt_noModifyRes = false, op
 async function executeQuery(ctx, sqlCommand, values = [], noModifyRes = false, noLog = false) {
   let connection = null;
   try {
-    if (!pool) {
-      pool = mysql.createPool(configuration);
-    }
-
     connection = await pool.getConnection();
 
     const result = await connection.query(sqlCommand, values);
@@ -102,8 +98,8 @@ async function executeQuery(ctx, sqlCommand, values = [], noModifyRes = false, n
   }
 }
 
-function closePool() {
-  return pool?.end();
+async function closePool() {
+  return await pool.end();
 }
 
 function addSqlParameter(parameter, accumulatedArray) {
