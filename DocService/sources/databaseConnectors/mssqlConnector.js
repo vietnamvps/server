@@ -32,10 +32,10 @@
 
 'use strict';
 
-const sql = require("mssql");
+const sql = require('mssql');
 const config = require('config');
 const connectorUtilities = require('./connectorUtilities');
-const utils = require('./../../Common/sources/utils');
+const utils = require('../../../Common/sources/utils');
 
 const configSql = config.get('services.CoAuthoring.sql');
 const cfgTableResult = configSql.get('tableResult');
@@ -50,12 +50,11 @@ const connectionConfiguration = {
   database: configSql.get('dbName'),
   pool: {
     max: configSql.get('connectionlimit'),
-    min: 0,
-    idleTimeoutMillis: 30000
+    min: 0
   }
 };
 const additionalOptions = configSql.get('msSqlExtraOptions');
-const configuration = Object.assign({}, connectionConfiguration, additionalOptions);
+const configuration = utils.deepMergeObjects({}, connectionConfiguration, additionalOptions);
 
 const placeholderPrefix = 'ph_';
 
@@ -72,17 +71,17 @@ function errorHandle(message, error, ctx) {
 function dataType(value) {
   let type = sql.TYPES.NChar(1);
   switch (typeof value) {
-    case "number": {
+    case 'number': {
       type = sql.TYPES.Decimal(18, 0);
       break;
     }
-    case "string": {
+    case 'string': {
       type = sql.TYPES.NVarChar(sql.MAX);
       break;
     }
-    case "object": {
+    case 'object': {
       if (value instanceof Date) {
-        type = sql.TYPES.DateTime()
+        type = sql.TYPES.DateTime();
       }
 
       break;
@@ -120,19 +119,19 @@ function registerPlaceholderValues(values, statement) {
 }
 
 function sqlQuery(ctx, sqlCommand, callbackFunction, opt_noModifyRes = false, opt_noLog = false, opt_values = {}) {
-  return executeSql(ctx, sqlCommand, opt_values, opt_noModifyRes, opt_noLog).then(
+  return executeQuery(ctx, sqlCommand, opt_values, opt_noModifyRes, opt_noLog).then(
     result => callbackFunction?.(null, result),
     error => callbackFunction?.(error)
   );
 }
 
-async function executeSql(ctx, sqlCommand, values = {}, noModifyRes = false, noLog = false) {
+async function executeQuery(ctx, sqlCommand, values = {}, noModifyRes = false, noLog = false) {
   try {
     await sql.connect(configuration);
 
     const statement = new sql.PreparedStatement();
     const placeholders = convertPlaceholdersValues(values);
-    registerPlaceholderValues(placeholders, statement)
+    registerPlaceholderValues(placeholders, statement);
 
     await statement.prepare(sqlCommand);
     const result = await statement.execute(placeholders);
@@ -145,7 +144,7 @@ async function executeSql(ctx, sqlCommand, values = {}, noModifyRes = false, noL
     let output = result;
     if (!noModifyRes) {
       if (result.recordset) {
-        output = result.recordset
+        output = result.recordset;
       } else {
         output = { affectedRows: result.rowsAffected.pop() };
       }
@@ -174,6 +173,10 @@ async function executeBulk(ctx, table) {
   }
 }
 
+function closePool() {
+  return sql.close();
+}
+
 function addSqlParameterObjectBased(parameter, name, type, accumulatedObject) {
   if (accumulatedObject._typesMetadata === undefined) {
     accumulatedObject._typesMetadata = {};
@@ -197,14 +200,14 @@ function concatParams(...parameters) {
 
 function getTableColumns(ctx, tableName) {
   const sqlCommand = `SELECT column_name FROM information_schema.COLUMNS WHERE TABLE_NAME = '${tableName}' AND TABLE_SCHEMA = 'dbo';`;
-  return executeSql(ctx, sqlCommand);
+  return executeQuery(ctx, sqlCommand);
 }
 
 function getDocumentsWithChanges(ctx) {
   const existingId = `SELECT TOP(1) id FROM ${cfgTableChanges} WHERE tenant=${cfgTableResult}.tenant AND id = ${cfgTableResult}.id`;
   const sqlCommand = `SELECT * FROM ${cfgTableResult} WHERE EXISTS(${existingId});`;
 
-  return executeSql(ctx, sqlCommand);
+  return executeQuery(ctx, sqlCommand);
 }
 
 function getExpired(ctx, maxCount, expireSeconds) {
@@ -217,10 +220,10 @@ function getExpired(ctx, maxCount, expireSeconds) {
   const notExistingTenantAndId = `SELECT TOP(1) tenant, id FROM ${cfgTableChanges} WHERE ${cfgTableChanges}.tenant = ${cfgTableResult}.tenant AND ${cfgTableChanges}.id = ${cfgTableResult}.id`
   const sqlCommand = `SELECT TOP(${count}) * FROM ${cfgTableResult} WHERE last_open_date <= ${date} AND NOT EXISTS(${notExistingTenantAndId});`;
 
- return executeSql(ctx, sqlCommand, values);
+ return executeQuery(ctx, sqlCommand, values);
 }
 
-async function upsert(ctx, task, opt_updateUserIndex) {
+async function upsert(ctx, task) {
   task.completeDefaults();
 
   let cbInsert = task.callback;
@@ -250,7 +253,7 @@ async function upsert(ctx, task, opt_updateUserIndex) {
   const lastOpenDate = insertValuesPlaceholder[4];
   const baseUrl = insertValuesPlaceholder[8];
   const insertValues = insertValuesPlaceholder.join(', ');
-  const columns = ['tenant', 'id', 'status', 'status_info', 'last_open_date', 'user_index', 'change_id', 'callback', 'baseurl']
+  const columns = ['tenant', 'id', 'status', 'status_info', 'last_open_date', 'user_index', 'change_id', 'callback', 'baseurl'];
   const sourceColumns = columns.join(', ');
   const sourceValues = columns.map(column => `source.${column}`).join(', ');
 
@@ -270,9 +273,7 @@ async function upsert(ctx, task, opt_updateUserIndex) {
     updateColumns += `, target.baseurl = ${baseUrl}`;
   }
 
-  if (opt_updateUserIndex) {
-    updateColumns += ', target.user_index = target.user_index + 1';
-  }
+  updateColumns += ', target.user_index = target.user_index + 1';
 
   let sqlMerge = `MERGE INTO ${cfgTableResult} AS target `
     + `USING(VALUES(${insertValues})) AS source(${sourceColumns}) `
@@ -281,11 +282,11 @@ async function upsert(ctx, task, opt_updateUserIndex) {
     + `WHEN NOT MATCHED THEN INSERT(${sourceColumns}) VALUES(${sourceValues}) `
     + `OUTPUT $ACTION as action, INSERTED.user_index as insertId;`;
 
-  const result = await executeSql(ctx, sqlMerge, values, true);
+  const result = await executeQuery(ctx, sqlMerge, values, true);
   const insertId = result.recordset[0].insertId;
-  const affectedRows = result.recordset[0].action === 'UPDATE' ? 2 : 1;
+  const isInsert = result.recordset[0].action === 'INSERT';
 
-  return { affectedRows, insertId };
+  return { isInsert, insertId };
 }
 
 function insertChanges(ctx, tableChanges, startIndex, objChanges, docId, index, user, callback) {
@@ -327,11 +328,12 @@ async function insertChangesAsync(ctx, tableChanges, startIndex, objChanges, doc
     result.affectedRows += recursiveValue.affectedRows;
   }
 
-  return result
+  return result;
 }
 
 module.exports = {
   sqlQuery,
+  closePool,
   addSqlParameter,
   concatParams,
   getTableColumns,
