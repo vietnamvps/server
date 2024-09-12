@@ -38,6 +38,7 @@ const operationContext = require('../../../Common/sources/operationContext');
 const taskResult = require('../../../DocService/sources/taskresult');
 const commonDefines = require('../../../Common/sources/commondefines');
 const constants = require('../../../Common/sources/constants');
+const utils = require("../../../Common/sources/utils");
 const configSql = config.get('services.CoAuthoring.sql');
 
 const ctx = new operationContext.Context();
@@ -420,14 +421,15 @@ describe('Base database connector', function () {
     test('Get Count With Status', async function () {
       let countWithStatus;
       let unknownStatus = 99;//to avoid collision with running server
-      countWithStatus = await baseConnector.getCountWithStatus(ctx, unknownStatus);
+      let EXEC_TIMEOUT = 30000 + utils.getConvertionTimeout(undefined);
+      countWithStatus = await baseConnector.getCountWithStatus(ctx, unknownStatus, EXEC_TIMEOUT);
       expect(countWithStatus).toEqual(0);
       for (const id of getCountWithStatusCase) {
         const task = createTask(id);
         task.status = unknownStatus;
         await insertIntoResultTable(date, task);
       }
-      countWithStatus = await baseConnector.getCountWithStatus(ctx, unknownStatus);
+      countWithStatus = await baseConnector.getCountWithStatus(ctx, unknownStatus, EXEC_TIMEOUT);
       expect(countWithStatus).toEqual(getCountWithStatusCase.length);
     });
   });
