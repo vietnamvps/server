@@ -38,6 +38,7 @@ const operationContext = require('../../../Common/sources/operationContext');
 const taskResult = require('../../../DocService/sources/taskresult');
 const commonDefines = require('../../../Common/sources/commondefines');
 const constants = require('../../../Common/sources/constants');
+const utils = require("../../../Common/sources/utils");
 const configSql = config.get('services.CoAuthoring.sql');
 
 const ctx = new operationContext.Context();
@@ -100,6 +101,9 @@ const getExpiredCase = [
   'baseConnector-getExpired()-tester-0',
   'baseConnector-getExpired()-tester-1',
   'baseConnector-getExpired()-tester-2',
+];
+const getCountWithStatusCase = [
+  'baseConnector-getCountWithStatusCase()-tester-0'
 ];
 const upsertCases = {
   insert: 'baseConnector-upsert()-tester-row-inserted',
@@ -205,7 +209,7 @@ afterAll(async function () {
   const upsertIds = Object.values(upsertCases);
 
   const tableChangesIds = [...emptyCallbacksCase, ...documentsWithChangesCase, ...changesIds, ...insertIds];
-  const tableResultIds = [...emptyCallbacksCase, ...documentsWithChangesCase, ...getExpiredCase, ...upsertIds];
+  const tableResultIds = [...emptyCallbacksCase, ...documentsWithChangesCase, ...getExpiredCase, ...getCountWithStatusCase, ...upsertIds];
 
   const deletionPool = [
     deleteRowsByIds(cfgTableChanges, tableChangesIds),
@@ -412,6 +416,21 @@ describe('Base database connector', function () {
       const resultAfterNewRows = await baseConnector.getExpired(ctx, maxCount + 3, 0);
 
       expect(resultAfterNewRows.length).toEqual(resultBeforeNewRows.length + getExpiredCase.length);
+    });
+
+    test('Get Count With Status', async function () {
+      let countWithStatus;
+      let unknownStatus = 99;//to avoid collision with running server
+      let EXEC_TIMEOUT = 30000 + utils.getConvertionTimeout(undefined);
+      countWithStatus = await baseConnector.getCountWithStatus(ctx, unknownStatus, EXEC_TIMEOUT);
+      expect(countWithStatus).toEqual(0);
+      for (const id of getCountWithStatusCase) {
+        const task = createTask(id);
+        task.status = unknownStatus;
+        await insertIntoResultTable(date, task);
+      }
+      countWithStatus = await baseConnector.getCountWithStatus(ctx, unknownStatus, EXEC_TIMEOUT);
+      expect(countWithStatus).toEqual(getCountWithStatusCase.length);
     });
   });
 
